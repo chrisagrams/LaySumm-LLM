@@ -5,8 +5,12 @@ import re
 import argparse
 from dataset import *
 
-parser = argparse.ArgumentParser(description="Run LaySumm task on ChatGPT compatible API.")
-parser.add_argument("--url", help="Base URL of API.", default="http://localhost:1234/v1")
+parser = argparse.ArgumentParser(
+    description="Run LaySumm task on ChatGPT compatible API."
+)
+parser.add_argument(
+    "--url", help="Base URL of API.", default="http://localhost:1234/v1"
+)
 parser.add_argument("--api_key", default="token-abc123")
 parser.add_argument("--model")
 parser.add_argument("--test_set", default="data/elife/test.json")
@@ -16,10 +20,12 @@ args = parser.parse_args()
 client = OpenAI(base_url=args.url, api_key=args.api_key)
 model = args.model
 
+
 def clean_response(response: str) -> str:
     """Remove <think>...</think> sections and strip newlines."""
     response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL)
     return response.strip()
+
 
 def submit_query(query: str) -> Tuple[str, dict]:
     completion = client.chat.completions.create(
@@ -29,28 +35,52 @@ def submit_query(query: str) -> Tuple[str, dict]:
     usage = completion.usage
     return message, usage
 
+
+def load_existing_keys(output_file: str) -> set:
+    """Load existing keys from the output file to avoid duplicates."""
+    existing_keys = set()
+    try:
+        with open(output_file, "r") as jsonl_file:
+            for line in jsonl_file:
+                try:
+                    entry = json.loads(line)
+                    existing_keys.add(entry["key"])
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        pass
+    return existing_keys
+
+
 if __name__ == "__main__":
     test_set = load_test_set(args.test_set)
     output_file = f"{model}{args.output_prefix}-laysumm_results.jsonl"
-    
-    with open(output_file, "w") as jsonl_file:
+    existing_keys = load_existing_keys(output_file)
+
+    with open(output_file, "a") as jsonl_file:
         for i in test_set:
+            if i["id"] in existing_keys:
+                print(f"Skipping existing key: {i['id']}")
+                continue
+
             query = construct_lay_sum_query(i)
             response, usage = submit_query(query)
             reference = get_reference_sum(i)
-            
+
             result = {
-                "key": i['id'],
+                "key": i["id"],
                 "candidate": response,
                 "reference": reference,
                 "usage": {
                     "prompt_tokens": usage.prompt_tokens,
                     "completion_tokens": usage.completion_tokens,
                     "total_tokens": usage.total_tokens,
-                }
+                },
             }
-            
+
             jsonl_file.write(json.dumps(result) + "\n")
-            print(f"Key: {i['id']} Prompt Tokens: {usage.prompt_tokens} Completion Tokens: {usage.completion_tokens} Total Tokens: {usage.total_tokens}")
+            print(
+                f"Key: {i['id']} Prompt Tokens: {usage.prompt_tokens} Completion Tokens: {usage.completion_tokens} Total Tokens: {usage.total_tokens}"
+            )
 
     print(f"Results saved to {output_file}")

@@ -9,6 +9,6 @@ if __name__ == "__main__":
     df = pd.read_csv(args.input_file)
 
     averages = df.iloc[:, 1:].mean()
-    
+
     print("Averages:")
-    print(averages)    
+    print(averages)
